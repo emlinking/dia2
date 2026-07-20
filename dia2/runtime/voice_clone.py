@@ -104,6 +104,26 @@ def _process_prefix_audio(
     return entries, steps, tokens
 
 
+_WHISPER_MODELS: dict[tuple[str, str], object] = {}
+
+
+def _load_whisper_model(model_name: str, device: torch.device):
+    """Load (and cache) a whisper_timestamped model, keyed by (model_name, device).
+
+    transcribe_words() runs once per prefix speaker on every Dia2.generate() call --
+    without caching, this reloaded the same multi-GB model from disk/cache on every
+    single call.
+    """
+    import whisper_timestamped as wts
+
+    key = (model_name, str(device))
+    model = _WHISPER_MODELS.get(key)
+    if model is None:
+        model = wts.load_model(model_name, device=str(device))
+        _WHISPER_MODELS[key] = model
+    return model
+
+
 def transcribe_words(
     audio_path: str,
     device: torch.device,
@@ -111,7 +131,7 @@ def transcribe_words(
 ) -> List[WhisperWord]:
     import whisper_timestamped as wts  # Imported lazily
 
-    model = wts.load_model("openai/whisper-large-v3", device=str(device))
+    model = _load_whisper_model("openai/whisper-large-v3", device)
     result = wts.transcribe(model, audio_path, language=language)
 
     words: List[WhisperWord] = []
